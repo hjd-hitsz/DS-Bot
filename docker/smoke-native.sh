@@ -13,9 +13,11 @@ export DSH_HOST=127.0.0.1 DSH_LISTEN_PORT=3096 DSH_TELEMETRY_DISABLED=1
 DEEPSEEK_BASE_URL= DEEPSEEK_API_KEY= /usr/local/bin/entrypoint.sh --help > /tmp/dsh-init.log
 test -r /data/profiles/web/cordis.patch.yml
 test "$(readlink -f /data/profiles/web/node_modules/ds-bot)" = /opt/dsh-template/profiles/web/node_modules/ds-bot
-cat > /data/profiles/web/cordis.patch.yml <<'YAML'
+cat > /tmp/ds-bot-smoke.yml <<'YAML'
 - id: bot
   config:
+    workspace: /workspace
+    updateCheck: false
     checkRatio: 0.45
 - id: llm-deepseek
   config:
@@ -34,10 +36,12 @@ YAML
 export MOCK_PORT=8796 MOCK_LOG=/data/mock.jsonl MOCK_DELAY_MS=300
 export DEEPSEEK_BASE_URL=http://127.0.0.1:8796/v1 DEEPSEEK_API_KEY=mock-key
 export DSBOT_SMOKE_HOME=/data
+export HOME=/home/node
 
 node /repo/ds-bot/dev/mock-llm.mjs /data > /tmp/mock.out 2>&1 &
 mock_pid=$!
-/usr/local/bin/entrypoint.sh > /data/web.log 2>&1 &
+gosu node dsh --profile web --patch /opt/ds-bot/docker.patch.yml \
+  --patch /tmp/ds-bot-smoke.yml --no-open --host "$DSH_HOST" --port "$DSH_LISTEN_PORT" > /data/web.log 2>&1 &
 web_pid=$!
 trap 'kill "$web_pid" "$mock_pid" 2>/dev/null || true' EXIT
 

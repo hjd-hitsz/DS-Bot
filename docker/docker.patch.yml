@@ -1,6 +1,6 @@
 # Image-owned overlay: the container is the sandbox boundary, so only full
-# access is offered, and the Bots' working folder is /workspace. The webserver
-# bind host/port come from a second overlay the entrypoint writes per start.
+# access is offered, and the Bots' working folder is /workspace. Upgrades use
+# the image build so the plugin and DSH do not drift inside a running container.
 - id: permission
   config:
     presets:
@@ -13,3 +13,4 @@
 - id: bot
   config:
     workspace: /workspace
+    updateCheck: false

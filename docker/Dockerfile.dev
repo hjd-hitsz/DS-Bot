@@ -52,6 +52,7 @@ WORKDIR /opt/ds-bot-deps
 COPY ds-bot/package.json ds-bot/package-lock.json ds-bot/.npmrc ./
 RUN npm ci --no-fund --no-audit
 
+RUN install -d -m 0755 /opt/ds-bot
 COPY --chmod=0644 docker/docker.patch.yml /opt/ds-bot/docker.patch.yml
 COPY --chmod=0755 docker/dev-supervisor.mjs /opt/ds-bot/dev-supervisor.mjs
 COPY --chmod=0755 docker/entrypoint.dev.sh /usr/local/bin/entrypoint.sh

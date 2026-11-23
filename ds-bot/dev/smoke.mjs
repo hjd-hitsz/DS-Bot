@@ -374,6 +374,7 @@ await step('update Writer', () => api('update-bot', { id: botNamed('Writer').id,
 // The native realpath is the one DS Bot saves; on Windows the JS one keeps 8.3 short names.
 const project = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-smoke-folder-')))
 const folderOf = sessionId => readdirSync(join(HOME, 'sessions')).find(dir => existsSync(join(HOME, 'sessions', dir, sessionId)))
+const teamFolder = folderOf(botNamed('Coder').sessionId)
 const coderParts = () => (botNamed('Coder').segments ?? []).length
 const partsBeforeFolder = coderParts()
 await step('Coder works in a folder of its own', () => api('update-bot', { id: botNamed('Coder').id, workDir: project }), () => {
@@ -386,7 +387,7 @@ await step('Coder answers from its folder', () => send(botNamed('Coder').id, 'ä½
 await step('Coder goes back to the team workspace', () => api('update-bot', { id: botNamed('Coder').id, workDir: '' }), () => {
   const coder = botNamed('Coder')
   return expect(coder.workDir === undefined, 'folder not cleared')
-    ?? expect(folderOf(coder.sessionId)?.endsWith('-bot-workspace--'), `Coder's chat is under ${folderOf(coder.sessionId)}`)
+    ?? expect(teamFolder !== undefined && folderOf(coder.sessionId) === teamFolder, `Coder's chat is under ${folderOf(coder.sessionId)}, expected ${teamFolder}`)
 })
 rmSync(project, { recursive: true, force: true })
 
