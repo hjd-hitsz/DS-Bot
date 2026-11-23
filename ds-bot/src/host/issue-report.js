@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { checkShownView } from 'deep-view/core'
-import { cleanText, ISSUES_URL } from './diagnostics.js'
+import { cleanText, GITHUB_REPOSITORY, ISSUES_URL } from './diagnostics.js'
 import { output } from './tools.js'
 
 export const PUBLISH_ISSUE = 'publish_ds_bot_issue'
@@ -79,7 +79,7 @@ export function install(rt) {
       const view = {
         type: 'stack',
         children: [
-          { type: 'text', tone: 'muted', text: 'This report will be public on Fei2411/DS-Bot. Check that it contains no private information.' },
+          { type: 'text', tone: 'muted', text: `This report will be public on ${GITHUB_REPOSITORY}. Check that it contains no private information.` },
           { type: 'text', text: `${fence}\n${body}\n${fence}` },
           { type: 'confirm', id: PUBLISH_ISSUE, confirmLabel: 'Publish issue', cancelLabel: 'Cancel' },
         ],
