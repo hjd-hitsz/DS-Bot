@@ -252,6 +252,17 @@ export function reviseGoal(room, input, by, memberOf, memberNames, now = Date.no
   return { goal, reply: { event: 'revise', title: goal.title, count: goal.stages.length, text: reason } }
 }
 
+function taskById(stage, number, value, bot) {
+  const id = typeof value === 'string' ? value.trim() : ''
+  if (id === '') return { error: 'task_id must be a nonempty task ID.' }
+  const task = stage.tasks.find(item => item.id === id)
+  if (task === undefined) return { error: `No task ID "${id}" in stage ${number}. Use an ID from the goal ledger.` }
+  if (bot !== undefined && task.botId !== bot.id) {
+    return { error: `Task "${id}" is not assigned to ${bot.name}.` }
+  }
+  return { task }
+}
+
 export function taskGoal(room, input, by, memberOf, memberNames, now = Date.now()) {
   const goal = room.goal
   if (goal === undefined) return { error: noGoal(room) }
@@ -260,11 +271,18 @@ export function taskGoal(room, input, by, memberOf, memberNames, now = Date.now(
   const stage = Number.isInteger(number) ? goal.stages[number - 1] : undefined
   if (stage === undefined) return { error: `The goal of "${room.name}" has no stage ${number}.` }
   const name = String(input.bot ?? '').trim()
-  if (name === '') return { error: required('bot', 'task') }
-  const bot = memberOf(name)
-  if (bot === undefined) return { error: `${name} is not a member of "${room.name}". Members: ${memberNames.join(', ')}.` }
-  const task = stage.tasks.find(item => item.botId === bot.id)
-  if (task === undefined) return { error: `${name} has no task in stage ${number} of "${room.name}".` }
+  if (name === '' && input.task_id === undefined) return { error: required('bot', 'task') }
+  const bot = name === '' ? undefined : memberOf(name)
+  if (name !== '' && bot === undefined) return { error: `${name} is not a member of "${room.name}". Members: ${memberNames.join(', ')}.` }
+  let task
+  if (input.task_id !== undefined) {
+    const found = taskById(stage, number, input.task_id, bot)
+    if (found.error !== undefined) return found
+    task = found.task
+  } else {
+    task = stage.tasks.find(item => item.botId === bot.id)
+    if (task === undefined) return { error: `${name} has no task in stage ${number} of "${room.name}".` }
+  }
   const status = input.status === undefined ? undefined : String(input.status)
   const note = input.note === undefined ? undefined : String(input.note).trim()
   if (status === undefined && note === undefined) return { error: required('status or note', 'task') }
@@ -315,15 +333,26 @@ export function reworkGoal(room, input, by, memberOf, memberNames, now = Date.no
     only = memberOf(name)
     if (only === undefined) return { error: `${name} is not a member of "${room.name}". Members: ${memberNames.join(', ')}.` }
   }
-  for (const task of stage.tasks) {
+  let target
+  if (input.task_id !== undefined) {
+    const number = goal.current + 1
+    if (input.stage !== undefined && Number(input.stage) !== number) {
+      return { error: `Rework applies to the current stage (${number}).` }
+    }
+    const found = taskById(stage, number, input.task_id, only)
+    if (found.error !== undefined) return found
+    target = found.task
+  }
+  for (const task of target === undefined ? stage.tasks : [target]) {
     if (only !== undefined && task.botId !== only.id) continue
     task.status = 'pending'
     delete task.note
   }
+  const eventText = target === undefined ? reason : `[${target.id}] ${reason}`
   stage.reworks += 1
   stage.feedback = reason
-  touchGoal(goal, { kind: 'rework', by, stage: stage.id, text: headOf(reason, EVENT_TEXT_MAX) }, now)
-  return { goal, reply: { event: 'rework', title: goal.title, stage: goal.current + 1, count: goal.stages.length, text: reason } }
+  touchGoal(goal, { kind: 'rework', by, stage: stage.id, text: headOf(eventText, EVENT_TEXT_MAX) }, now)
+  return { goal, target, reply: { event: 'rework', title: goal.title, stage: goal.current + 1, count: goal.stages.length, text: eventText } }
 }
 
 export function completeGoal(room, input, by, now = Date.now()) {
@@ -408,7 +437,7 @@ export function markTasks(room, botId, from, to, note, now = Date.now()) {
   return true
 }
 
-const DUTY_ACTIVE = 'You run this goal. Hand each task of the current stage to its member with @Name; members you call in one message start together. When they report back, check the results against the stage\'s "done when" yourself or have a reviewing member check them. Then call group_goal pass with the evidence and hand out the next stage in the same reply, or call group_goal rework with what is missing and call the members again. Keep all work inside the objective and the rules. When the user corrects the direction, call group_goal revise first. Ask the user only for decisions you cannot make.'
+const DUTY_ACTIVE = 'You run this goal. Hand each task of the current stage to its member with @Name; members you call in one message start together. When they report back, check the results against the stage\'s "done when" yourself or have a reviewing member check them. Then call group_goal pass with the evidence and hand out the next stage in the same reply, or call group_goal rework with what is missing and call the members again. Specify task_id when the feedback applies to one task. Keep all work inside the objective and the rules. When the user corrects the direction, call group_goal revise first. Ask the user only for decisions you cannot make.'
 const DUTY_PASSED = 'Every stage passed. Check the overall "done when", then call group_goal complete with the evidence and a summary for the user.'
 const DUTY_PAUSED = 'The user paused this goal. Do not hand out stage work or pass stages. Talk with the user, and write their corrections into the goal with group_goal revise. The user resumes it.'
 const dutyOf = goal => (goal.status === 'paused' ? DUTY_PAUSED : goal.stages[goal.current] === undefined ? DUTY_PASSED : DUTY_ACTIVE)
@@ -442,7 +471,7 @@ export function install(rt) {
       if (stage.status === 'passed') lines.push(`[passed] ${n}. ${stage.title}`)
       else if (index === goal.current) {
         lines.push(`[current] ${n}. ${stage.title} — done when: ${stage.acceptance}`)
-        for (const task of stage.tasks) lines.push(`  - ${nameOf(task.botId)}: ${task.task} [${TASK_LABEL[task.status]}]${task.note ? ` — ${task.note}` : ''}`)
+        for (const task of stage.tasks) lines.push(`  - ${nameOf(task.botId)}: ${task.task} [${TASK_LABEL[task.status]}] (${task.id})${task.note ? ` — ${task.note}` : ''}`)
         if (stage.reworks > 0) lines.push(`  Sent back ${stage.reworks} ${stage.reworks === 1 ? 'time' : 'times'}. Latest feedback: ${stage.feedback ?? ''}`)
       } else lines.push(`[next] ${n}. ${stage.title}: ${[...new Set(stage.tasks.map(task => nameOf(task.botId)))].join(', ')}`)
     })
@@ -700,8 +729,9 @@ export function install(rt) {
         },
         description: 'start: every stage, in order. revise: replaces the current stage and every stage after it; passed stages stay. Each stage has a title, its own check (how to tell this stage is done) and its tasks, each for one member by exact name',
       },
-      bot: { type: 'string', description: 'task: the member whose task changes. rework: only this member\'s task goes back' },
-      stage: { type: 'integer', description: 'task: stage number, 1 for the first; the current stage when left out' },
+      bot: { type: 'string', description: 'task: the member whose first task changes if task_id is omitted. rework: send back this member\'s tasks if task_id is omitted' },
+      task_id: { type: 'string', description: 'task, rework: exact task ID from the goal ledger. Rework sends back only this task in the current stage. When bot is also supplied, it must be the task owner' },
+      stage: { type: 'integer', description: 'task: stage number, 1 for the first; the current stage when left out. For a rework with task_id use the current stage' },
       status: { type: 'string', enum: ['pending', 'working', 'reported', 'done'], description: 'task: the task\'s new status' },
       note: { type: 'string', description: 'task: where the task stands, in a few words' },
       evidence: { type: 'string', description: 'pass, complete: what shows it is done: test output, changed files, check results' },
@@ -764,7 +794,9 @@ export function install(rt) {
           break
         case 'rework':
           result = reworkGoal(room, args, self, of, names)
-          next = 'Sent back. Call the members again with @Name and say what is missing.'
+          next = result.target === undefined
+            ? 'Sent back. Call the members again with @Name and say what is missing.'
+            : `Sent back task ${result.target.id}. Call @${nameOf(result.target.botId)} for this task and say what is missing.`
           break
         case 'complete':
           result = completeGoal(room, args, self)

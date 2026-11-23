@@ -202,6 +202,72 @@ test('rework sends the current stage back; revise keeps passed stages and a matc
   assert.equal(revised.stages[1].tasks[0].botId, 'c')
 })
 
+test('member and stage rework keep their original scope', async (t) => {
+  const host = await start(t)
+  const tasks = [
+    { bot: 'Writer', task: 'deliver inventory' },
+    { bot: 'Writer', task: 'review writes' },
+    { bot: 'Tester', task: 'check handoff' },
+  ]
+  await startGoal(host, { stages: [{ title: 'Pilot', acceptance: 'pilot checked', tasks }] })
+  const run = args => host.tool('group_goal', args, 'ga')
+
+  await run({ action: 'task', bot: 'Writer', status: 'reported', note: 'inventory verified' })
+  await run({ action: 'task', bot: 'Tester', status: 'reported', note: 'handoff verified' })
+  assert.deepEqual(goal(host).stages[0].tasks.map(task => [task.status, task.note]), [
+    ['reported', 'inventory verified'], ['pending', undefined], ['reported', 'handoff verified'],
+  ])
+
+  await run({ action: 'rework', bot: 'Writer', reason: 'writes still need evidence' })
+  assert.deepEqual(goal(host).stages[0].tasks.map(task => [task.status, task.note]), [
+    ['pending', undefined], ['pending', undefined], ['reported', 'handoff verified'],
+  ])
+  await run({ action: 'rework', reason: 'redo the stage' })
+  assert.ok(goal(host).stages[0].tasks.every(task => task.status === 'pending' && task.note === undefined))
+})
+
+test('task IDs select one task and reject conflicting selectors without changes', async (t) => {
+  const host = await start(t)
+  const tasks = [
+    { bot: 'Writer', task: 'deliver inventory' },
+    { bot: 'Writer', task: 'review writes' },
+  ]
+  await startGoal(host, { stages: [{ title: 'Pilot', acceptance: 'pilot checked', tasks }, STAGES[1]] })
+  const run = args => host.tool('group_goal', args, 'ga')
+  const [pilot, review] = goal(host).stages
+  const [inventory, writes] = pilot.tasks
+  const [later] = review.tasks
+
+  const shown = await run({ action: 'show' })
+  assert.ok(shown.includes(`deliver inventory [not started] (${inventory.id})`))
+  assert.ok(shown.includes(`review writes [not started] (${writes.id})`))
+  await run({ action: 'task', task_id: inventory.id, status: 'reported', note: 'inventory verified' })
+  await run({ action: 'task', task_id: writes.id, bot: 'Writer', status: 'reported', note: 'writes submitted' })
+  await run({ action: 'task', task_id: later.id, stage: 2, note: 'future check scheduled' })
+  const before = goal(host)
+  assert.deepEqual(before.stages[0].tasks.map(task => [task.status, task.note]), [
+    ['reported', 'inventory verified'], ['reported', 'writes submitted'],
+  ])
+  assert.equal(before.stages[1].tasks[0].note, 'future check scheduled')
+  for (const action of ['task', 'rework']) {
+    const update = { action, note: 'change', reason: 'change' }
+    assert.match(await run({ ...update, task_id: '' }), /task_id must be a nonempty task ID/)
+    assert.match(await run({ ...update, task_id: 't999' }), /No task ID "t999" in stage 1/)
+    assert.match(await run({ ...update, task_id: writes.id, bot: 'Tester' }), /is not assigned to Tester/)
+    assert.match(await run({ ...update, task_id: later.id }), /in stage 1/)
+  }
+  assert.match(await run({ action: 'rework', task_id: writes.id, stage: 2, reason: 'change' }), /current stage \(1\)/)
+  assert.deepEqual(goal(host), before)
+
+  const reason = 'x'.repeat(1000)
+  assert.match(await run({ action: 'rework', task_id: writes.id, reason }), /Call @Writer for this task/)
+  const after = goal(host)
+  assert.deepEqual(after.stages[0].tasks, [before.stages[0].tasks[0], { ...writes, status: 'pending' }])
+  assert.deepEqual(after.stages[1], before.stages[1])
+  assert.equal(after.stages[0].feedback, reason)
+  assert.ok(after.events.at(-1).text.startsWith(`[${writes.id}] `))
+})
+
 test('pause, resume and stop refuse the wrong state and follow it', async (t) => {
   const host = await start(t)
   await startGoal(host)
