@@ -109,7 +109,7 @@ test('only the matching affirmative view reply publishes the redacted issue show
   rt.redactSecrets = value => value.replaceAll(savedSecret, '[hidden]')
   rt.publishDsBotIssue = async (botId, draft) => {
     writes.push({ botId, ...draft })
-    return 'https://github.com/Fei2411/DS-Bot/issues/42'
+    return 'https://github.com/hjd-hitsz/DS-Bot/issues/42'
   }
   const draft = await prepareIssue({ what: `Error in ${homedir()}/a with ${savedSecret}` })
   const action = draft.view.children.at(-1).id
@@ -126,7 +126,7 @@ test('only the matching affirmative view reply publishes the redacted issue show
   assert.equal((await call('view-reply', { ...reply, values: { confirmed: 'yes' } })).ok, false)
   const answers = await Promise.all([call('view-reply', reply), call('view-reply', reply)])
   assert.equal(answers.filter(result => result.ok).length, 1)
-  assert.deepEqual(answers.find(result => result.ok).value, { issueReportResult: 'Issue published: https://github.com/Fei2411/DS-Bot/issues/42' })
+  assert.deepEqual(answers.find(result => result.ok).value, { issueReportResult: 'Issue published: https://github.com/hjd-hitsz/DS-Bot/issues/42' })
   assert.equal(writes.length, 1)
   const [{ botId, title, body }] = writes
   assert.equal(botId, 'writer')
@@ -137,7 +137,7 @@ test('only the matching affirmative view reply publishes the redacted issue show
   assert.ok(!JSON.stringify(draft).includes(savedSecret))
   const followup = sent.at(-1).message.content[0].text
   assert.equal(JSON.parse(followup).answers[0].values.confirmed, true)
-  assert.match(replyText(followup), /Issue published: https:\/\/github\.com\/Fei2411\/DS-Bot\/issues\/42$/)
+  assert.match(replyText(followup), /Issue published: https:\/\/github\.com\/hjd-hitsz\/DS-Bot\/issues\/42$/)
 })
 
 test('cancel, dismiss, a typed yes, and a plain confirmation card never publish an issue', async (t) => {
@@ -179,7 +179,7 @@ test('an unconnected report returns a capped prefilled link, and a failed follow
   const link = fallback.value.issueReportResult.match(/https:\/\/\S+/)[0]
   assert.ok(link.length <= 4000)
   const url = new URL(link)
-  assert.equal(url.origin + url.pathname, 'https://github.com/Fei2411/DS-Bot/issues/new')
+  assert.equal(url.origin + url.pathname, 'https://github.com/hjd-hitsz/DS-Bot/issues/new')
   assert.equal(url.searchParams.get('template'), 'bug.yml')
   assert.equal(url.searchParams.get('title'), args.title)
   assert.match(url.searchParams.get('what'), /^(?:故障😀)+故?障?…$/)
@@ -194,7 +194,7 @@ test('an unconnected report returns a capped prefilled link, and a failed follow
   assert.match(uncertain.value.issueReportResult, /Check existing issues before submitting manually: https:\/\//)
 
   let writes = 0
-  rt.publishDsBotIssue = async () => { writes += 1; return 'https://github.com/Fei2411/DS-Bot/issues/42' }
+  rt.publishDsBotIssue = async () => { writes += 1; return 'https://github.com/hjd-hitsz/DS-Bot/issues/42' }
   await show('writer-now', await prepareIssue())
   const reply = await open()
   failFlush(new Error('could not flush'))
