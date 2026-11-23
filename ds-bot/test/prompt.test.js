@@ -74,6 +74,19 @@ test('the group relay and non-Bot sessions do not get progress instructions', (t
   assert.equal(prompt('outside'), '')
 })
 
+test('research prompts distinguish shared evidence from the Main Bot’s accountability', (t) => {
+  const { ctx, prompt } = start()
+  t.after(() => ctx.dispose())
+  for (const id of ['main', 'worker', 'group-worker']) {
+    assert.match(prompt(id), /correct, usable deliverable/)
+    assert.match(prompt(id), /penalties, transactions, and external audit findings as recorded facts only when an authorized source supplies them/)
+  }
+  assert.match(prompt('main'), /check which facts reached the decision maker/)
+  assert.match(prompt('main'), /Return the affected group task by its ID/)
+  assert.doesNotMatch(prompt('worker'), /Return the affected group task by its ID/)
+  assert.doesNotMatch(prompt('room'), /Work and evidence in this research team/)
+})
+
 test('ordinary Bot prompts never direct calls to team-admin tools', (t) => {
   const { ctx, prompt } = start()
   t.after(() => ctx.dispose())
