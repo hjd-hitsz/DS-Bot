@@ -4,11 +4,9 @@ The threat model that security reviews and scans of this repository start from. 
 
 ## System overview and trust boundaries
 
-DS Bot is a team of long-lived LLM Bots built as a plugin on DeepSeek Harness (DSH). It runs in three ways:
+DS Bot is a team of long-lived LLM Bots built as a plugin on DeepSeek Harness (DSH). This fork runs DSH Web in Docker and publishes `127.0.0.1:13080` by default. The current team uses `danger-full-access` with approval `never` inside the container. The [Docker guide](docker/README.md) describes how shared volumes and access work. Electron entries in this document describe inherited upstream code.
 
-- **DSH Desktop / DSH Web** with the `ds-bot` plugin, on the user's own computer.
-- **Desktop app** (`app/`, Electron) that runs a pinned DSH with the plugin in its own `DSH_HOME`, and imports a team from `~/.dsh` (read only).
-- **Docker** (`docker/`, `docker-compose.yml`): `dsh web` on `0.0.0.0:3080` (published as `0.0.0.0:13080`), `DSH_PERMISSION_MODE=danger-full-access`, approval `never`. The container is the sandbox boundary.
+The salary ledger and independent reviewer are research plans. Their data and execution environments will be isolated from the team container. [Research roadmap](RESEARCH.md)
 
 Trust boundaries:
 1. Untrusted content -> model -> Bot tools. Web pages, files, search results, connector/MCP results and messages from other Bots reach the model; the model's tool calls run with the Bot's permission preset.
@@ -32,7 +30,7 @@ Trust boundaries:
 
 - Chat input from the user (trusted).
 - Content the Bot reads: web pages (Bot browser, `read_browser`, web search), files in the work folder, connector/MCP tool results, messages from other Bots and group chats, scheduled-task prompts. **Attacker-controlled.**
-- `/api/bot` HTTP endpoints and DSH Web UI: the local user; in Docker, anyone who can reach port 13080 (DSH trusted-host list + launch token).
+- The `/api/bot` endpoints and DSH Web UI require the DSH launch token or login cookie. Compose exposes them only on loopback by default and DSH checks the configured trusted hosts.
 - Electron IPC from the app window.
 - MCP access (`ds-bot/src/host/mcp-server.js`), off by default: local programs holding a per-client token, on 127.0.0.1 only; requests with an `Origin` header or a non-local `Host` are refused. A client sends messages as a marked user channel to the Bots and groups in its scope (never private Bots) and cannot answer approvals or questions, or reach settings, secrets or tools itself. Each message still runs a normal turn of the target Bot under that Bot's permission preset, so a token can direct its Bots to do anything they may do without an approval; with the default scope that is the Main Bots, which have the most rights. The source marker is information only. Its messages are untrusted input like any channel message.
 
@@ -64,10 +62,9 @@ Trust boundaries:
 
 - **Encryption at rest does not protect a running host**: the process needs the decrypted values and, for encrypted stores, the passphrase (in memory or in the environment/passphrase file). A compromised process, a same-user process that can read the environment, or an administrator can get the keys. The benefit is disk copies and backups not carrying plaintext; keep the passphrase out of those copies.
 
-- **Docker edition: Bots have full access inside the container by design** (`danger-full-access`, approval `never`). A Bot changing or reading files inside the container is not a finding; escaping the container or leaking keys/secrets still is.
-- DSH itself is upstream; not explicitly ruled out, but fixes belong upstream (hard rule: never patch DSH).
+- The current Docker team has full access to its container (`danger-full-access`, approval `never`). Put only team data inside it and use independent services for higher-trust research components.
+- DSH supplies the agent engine and provider integrations. Record the DSH version and reproduce cross-component failures in the Docker environment.
 
 ## Open questions
 
-- Is the Docker web UI expected to be reachable only on a trusted LAN?
 - Should a secret scoped to one Bot be treated as hidden from Main Bots too?

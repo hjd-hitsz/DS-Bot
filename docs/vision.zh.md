@@ -2,6 +2,8 @@
 
 [English](vision.md) | 中文
 
+本文记录上游的产品设计。个人 Fork 的目标与开发约定见 [研究路线图](../RESEARCH.md) 和 [AGENTS.md](../AGENTS.md)。
+
 本文写 DS Bot 要做成什么、为什么这样做。功能怎么用，见 [README](../README.zh.md)；已定的具体设计，见 [docs/plans/](plans/)；怎么参与开发，见 [CONTRIBUTING](../CONTRIBUTING.zh.md)。
 
 ## DS Bot 是什么
