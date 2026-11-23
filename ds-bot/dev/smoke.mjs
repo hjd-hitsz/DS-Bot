@@ -373,8 +373,11 @@ await step('update Writer', () => api('update-bot', { id: botNamed('Writer').id,
 // moves the Bot's own chat on to a fresh part made there; the fresh part then stays put.
 // The native realpath is the one DS Bot saves; on Windows the JS one keeps 8.3 short names.
 const project = realpathSync.native(mkdtempSync(join(tmpdir(), 'ds-bot-smoke-folder-')))
-const folderOf = sessionId => readdirSync(join(HOME, 'sessions')).find(dir => existsSync(join(HOME, 'sessions', dir, sessionId)))
-const teamFolder = folderOf(botNamed('Coder').sessionId)
+const folderOf = (sessionId) => {
+  if (typeof sessionId !== 'string') return undefined
+  return readdirSync(join(HOME, 'sessions')).find(dir => existsSync(join(HOME, 'sessions', dir, sessionId)))
+}
+const teamFolder = folderOf(chief().sessionId ?? chief().id)
 const coderParts = () => (botNamed('Coder').segments ?? []).length
 const partsBeforeFolder = coderParts()
 await step('Coder works in a folder of its own', () => api('update-bot', { id: botNamed('Coder').id, workDir: project }), () => {
