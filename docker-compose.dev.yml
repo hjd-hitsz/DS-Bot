@@ -1,13 +1,13 @@
 # Local development: run the mounted checkout and reload it on source changes.
 #
-#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+#   DS_BOT_PORT=13081 docker compose -p ds-bot-dev -f docker-compose.yml -f docker-compose.dev.yml up -d --build ds-bot
 #
 # The base file owns the port, environment and persistent data. This override
 # adds the checkout mount and the development image. An optional local
 # docker-compose.override.yml can supply keys without entering version control.
 services:
   ds-bot:
-    image: ds-bot:dev
+    image: ds-bot-research:dev
     pull_policy: never
     build:
       context: .

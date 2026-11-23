@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+FROM node:24-bookworm-slim
+
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+ENV npm_config_registry=${NPM_REGISTRY}
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /repo
+COPY ds-bot/package.json ds-bot/package-lock.json ds-bot/.npmrc ds-bot/
+COPY ds-bot/dev/harness/package.json ds-bot/dev/harness/
+COPY link/package.json link/package-lock.json link/
+RUN npm ci --prefix ds-bot --no-audit --no-fund \
+    && npm ci --prefix link --no-audit --no-fund \
+    && npm --prefix ds-bot run harness
+
+COPY . .
+WORKDIR /repo/ds-bot

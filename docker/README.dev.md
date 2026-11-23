@@ -1,78 +1,25 @@
-# DS Bot source development in Docker
+# 在 Docker 中开发 DS Bot
 
-This Compose override runs the checkout on disk with the DSH 0.2.2 toolchain.
-Frontend source changes rebuild the browser bundles; host source changes restart
-DSH. The development image stays local and is separate from the GHCR release.
-
-## Start
-
-From the repository root:
+生产只使用 [正式镜像](README.md)。需要跟踪源码修改时，从仓库根目录启用开发配置。
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.dev.yml logs -f ds-bot
+PUID=$(id -u) PGID=$(id -g) DS_BOT_PORT=13081 docker compose -p ds-bot-dev \
+  -f docker-compose.yml -f docker-compose.dev.yml up -d --build ds-bot
 ```
 
-The base Compose file supplies the port, model environment and persistent data
-mounts. Add your existing local override between those two files when you keep
-keys there:
+页面位于 `http://127.0.0.1:13081/`，独立使用 `ds-bot-dev` 项目的数据和工作卷。登录方式与生产相同。主机服务的源码修改会触发容器内 DSH 重启。界面源码修改会在容器里重建构件，刷新浏览器即可加载。正在执行的回合可能随重启中断。
+
+需要生成并提交全部构件时，用带完整仓库副本及 Linux 依赖的检查镜像构建，再复制输出。
 
 ```sh
-docker compose -f docker-compose.yml -f docker-compose.override.yml \
-  -f docker-compose.dev.yml up -d --build
+docker compose -p ds-bot-check build checks
+docker compose -p ds-bot-check run --rm -T \
+  -v "$PWD/ds-bot:/out" checks \
+  sh -ec 'npm run build && cp client.js office.js link.js /out/'
 ```
 
-Use the same file list with `stop`, `down` and `logs`. A fresh `docker/data`
-is initialized from the image; an existing one keeps the team, chats, settings
-and browser login key. Bookmark the root URL without the process token: the
-signed browser cookie survives restarts.
-
-## Source reload
-
-The checkout is mounted at `/app/ds-bot`, and the web profile links to it with
-`link:/app/ds-bot`. `docker/dev-supervisor.mjs` polls the source every 1.5
-seconds, which also works with Docker Desktop bind mounts.
-
-- `src/client/`, `src/office/` and `src/shared/`: rebuild `client.js`
-  and `office.js`; refresh the browser to load the new bundle.
-- `src/host/`, `src/shared/`, `index.js`, `web-search.js`,
-  `package.json` and `cordis.patch.yml`: restart DSH to load the new host
-  code. The restart interrupts a turn that is running.
-- The generated bundles are written in the checkout, so the host and container
-  use the same files. Every development start builds them before DSH starts,
-  including edits made while the container was stopped.
-
-The checkout's `node_modules` is masked by a named volume and populated with
-Linux dependencies from the image. This keeps a Windows or macOS checkout's
-native binaries out of the container. After changing `package-lock.json`,
-recreate the development image and the `ds-bot-dev-modules` volume to refresh
-those dependencies.
-
-## Data and release switching
-
-The first development start saves the profile's release manifest, lockfile and
-installed dependency tree, then links the profile to the checkout. To return the
-same data directory to the release image, stop the development container and
-start the release Compose setup. Its entrypoint restores those saved files,
-including additional installed plugins, before starting DSH.
-
-Use one container with a given data directory at a time. The supervisor removes
-a team lock left by a previous container whose hostname differs, which covers
-container recreation and Docker's process ID reuse.
-
-## Checks
-
-Build and exercise fresh startup, profile linking, HTTP service, frontend
-rebuilds and host restarts:
+可以用 [Docker 指南](README.md#开发与验证) 中的容器测试核对改动。在依赖清单改变后重建镜像。开发服务结束时使用相同的 Compose 文件和项目名停止。
 
 ```sh
-docker build -f docker/Dockerfile -t ds-bot:local .
-docker build -f docker/Dockerfile.dev -t ds-bot:dev .
-node docker/test-dev.mjs ds-bot:dev ds-bot:local
+docker compose -p ds-bot-dev -f docker-compose.yml -f docker-compose.dev.yml down
 ```
-
-The test copies the plugin to a temporary directory and uses isolated,
-network-disabled containers and temporary volumes. Development startup reuses
-the installed dependency tree, including local plugins whose original archives
-are absent. The test makes no model calls and removes its resources when it
-finishes. The release image continues to use `docker/test.mjs`.

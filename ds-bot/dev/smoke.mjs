@@ -21,7 +21,7 @@ if (!name || !port) {
 }
 const outFile = rest[0] === '--out' ? rest[1] : undefined
 const ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))))
-const HOME = join(ROOT, `.dsh-test-${name}`)
+const HOME = process.env.DSBOT_SMOKE_HOME ?? join(ROOT, `.dsh-test-${name}`)
 const BASE = `http://127.0.0.1:${port}`
 const QUIET_MS = 2500
 const STEP_TIMEOUT_MS = 120_000

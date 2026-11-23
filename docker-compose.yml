@@ -1,35 +1,38 @@
-# From the repository root:
-#   docker compose up -d --build
-# Configure this file directly; no .env file is needed.
-# Do not commit this file after filling in real API keys.
+# From the repository root, copy .env.example to .env to configure a model.
 services:
   ds-bot:
-    image: ds-bot:local
+    image: ds-bot-research:local
     pull_policy: never
     build:
       context: .
       dockerfile: docker/Dockerfile
       args:
-        NPM_REGISTRY: https://registry.npmjs.org/
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+        DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.1}
     ports:
-      - "0.0.0.0:13080:3080"
+      - "${DS_BOT_BIND:-127.0.0.1}:${DS_BOT_PORT:-13080}:3080"
     environment:
-      DEEPSEEK_API_KEY: ""
-      # Uncomment for another Anthropic-Messages-compatible endpoint.
-      # DEEPSEEK_BASE_URL: "https://your-endpoint.example"
-      # Add custom provider keys here when referenced by your DSH config.
-      # RELAY_API_KEY: ""
-      PUID: "1000"
-      PGID: "1000"
-      # Add your NAS/LAN IP and host names, without ports.
-      DSH_TRUSTED_HOST: "localhost,127.0.0.1"
-      DSH_HOST: "0.0.0.0"
-      DSH_LISTEN_PORT: "3080"
-      # DSH_TELEMETRY_DISABLED: "1"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-}"
+      PUID: "${PUID:-1000}"
+      PGID: "${PGID:-1000}"
+      DSH_TRUSTED_HOST: "${DSH_TRUSTED_HOST:-localhost,127.0.0.1}"
+      DSH_TELEMETRY_DISABLED: "${DSH_TELEMETRY_DISABLED:-1}"
     volumes:
-      - ./docker/data:/data
-      - ./docker/workspace:/workspace
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - data:/data
+      - workspace:/workspace
     restart: unless-stopped
     stop_grace_period: 15s
+
+  checks:
+    profiles: [checks]
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.checks
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+    command: [sh, -ec, "npm test && node scripts/build-client.mjs --check && npm run lint"]
+
+volumes:
+  data:
+  workspace:

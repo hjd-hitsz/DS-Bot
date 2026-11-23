@@ -212,7 +212,7 @@ try {
   `
   await waitFor('the release web server with its restored plugin', () => docker(['exec', releaseName, 'node', '--input-type=module', '-e', releaseProbe], { allowFailure: true }).status === 0)
   docker(['exec', releaseName, 'sh', '-eu', '-c', `
-    test ! -L /data/profiles/web/node_modules/ds-bot
+    test "$(readlink -f /data/profiles/web/node_modules/ds-bot)" = /opt/dsh-template/profiles/web/node_modules/ds-bot
     test -f /data/profiles/web/node_modules/ds-bot/index.js
     test -f /data/profiles/web/node_modules/deep-view/package.json
     test -f /data/profiles/web/node_modules/extra-plugin/index.js

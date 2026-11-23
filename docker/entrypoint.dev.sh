@@ -70,5 +70,7 @@ if [ -n "${DSH_TRUSTED_HOST:-}" ]; then
 fi
 
 export HOME=/home/node
+[ -n "${DEEPSEEK_BASE_URL:-}" ] || unset DEEPSEEK_BASE_URL
+[ -n "${DEEPSEEK_API_KEY:-}" ] || unset DEEPSEEK_API_KEY
 cd /workspace
 exec gosu node /opt/ds-bot/dev-supervisor.mjs "$@"

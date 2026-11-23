@@ -32,6 +32,8 @@ node_modules/
 /docker/workspace/
 /docker/.env
 /.env
+/.env.*
+!/.env.example
 /docker-compose.override.yml
 
 # Bytecode from the record-browser-gif encoder's local media tests.

@@ -17,7 +17,7 @@
 // The changes are found by polling: a bind mount on Docker Desktop does not
 // deliver the host's file events into the container, so fs.watch stays quiet.
 import { spawn } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -62,8 +62,6 @@ const linkProfile = () => {
   if (!existsSync(backupPath)) {
     writeFileSync(backupPath, readFileSync(manifestPath, 'utf8'))
     log('kept the release profile manifest as package.json.release')
-    const installed = join(PROFILE, 'node_modules', 'ds-bot')
-    if (existsSync(installed)) renameSync(installed, join(PROFILE, 'ds-bot.release'))
   }
   const lockPath = join(PROFILE, 'pnpm-lock.yaml')
   const lockBackupPath = join(PROFILE, 'pnpm-lock.yaml.release')

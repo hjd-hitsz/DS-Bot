@@ -1,256 +1,57 @@
-# DS Bot in Docker
+# Docker 部署
 
-This directory deploys DS Bot as a Docker image: a `dsh web` server (DeepSeek
-Harness) with the `ds-bot` plugin installed, ready for a NAS or any always-on
-box. The container is the sandbox boundary — see [Permissions](#permissions).
-For local source development with frontend rebuilds and host restarts, see
-[the development Compose setup](README.dev.md).
+从仓库根目录构建这个 Fork。宿主机提供 Docker Engine、Docker Compose 和浏览器。镜像打包当前检出的 DS Bot 源码，并运行自带的 DSH Web。默认 DSH 版本为 `0.2.2-rc.1`。模型由 DSH 原生提供方接入，PI Agent、PI ACP 和宿主机模型代理均无需安装。
 
-## Requirements
+DSH 随附的 `llm-pi-ai` 是模型协议适配器，用于接入 OpenAI 兼容服务。它由 DSH 进程调用，团队、会话和工具仍由 DSH 执行。
 
-- Docker 24+ with Compose v2.24+ (Docker Desktop, or Docker Engine + the
-  compose plugin — `env_file.required` needs 2.24).
-- Linux containers, x86-64. arm64 builds should work (`node:24-bookworm-slim` is
-  multi-arch) but are untested.
-- A DeepSeek API key (or another Anthropic-Messages-compatible endpoint through
-  `DEEPSEEK_BASE_URL`).
-
-The image is a Debian Bookworm userland, so the host's glibc does not decide
-anything: this is also the supported route on hosts too old to run the desktop
-app or a host-installed `dsh` (CentOS 7, glibc 2.17 — see [known
-issues](../docs/known-issues.md)). The container brings its own DSH and native
-libraries, so keep the host's `libghostty-vt.so` and other system libraries
-out of it; the only host requirement is a Docker (or Podman) that can run a
-Bookworm image.
-
-## Quick start
-
-From the repository root, edit `docker-compose.yml`: fill in
-`DEEPSEEK_API_KEY`, add the NAS IP to `DSH_TRUSTED_HOST`, and set `PUID`/`PGID`
-to the share owner's IDs. Environment variables, ports and paths are all
-configured directly in this file; no `.env` is needed. Do not commit real keys.
+## 启动与登录
 
 ```sh
-docker compose up -d --build
-docker compose logs ds-bot
-```
-
-This builds the local image without pulling a published DS Bot image. The root
-Compose file publishes host port **13080**, and stores data and workspace files
-in `docker/data` and `docker/workspace`.
-
-The log prints a line like `dsh web: http://127.0.0.1:3080/?token=… (LAN:
-http://172.x.x.x:3080/?token=…)`. Take the token from it and open
-`http://<NAS IP>:13080/?token=…` once in your browser: the token sets a signed
-cookie (valid 30 days, bound to that authority), after which
-`http://<NAS IP>:13080/` opens the UI directly. The printed port is the container's;
-use the host port from `ports:` when opening it. The token is a fresh
-process credential on every start. It exchanges itself for a signed cookie
-(valid 30 days), whose key persists in `/data`, so later restarts keep the
-browser logged in. Bookmark the root URL without `?token=…`. The first time
-the team opens, DS Bot creates a Main Bot called Chief.
-
-An alternative for users who prefer `.env` is still available in `docker/`:
-
-```sh
-cd docker
 cp .env.example .env
-# Edit .env: DEEPSEEK_API_KEY, DSH_TRUSTED_HOST, PUID/PGID.
-docker compose up -d --build
+docker compose -p ds-bot-research up -d --build
+docker compose -p ds-bot-research logs ds-bot
 ```
 
-That file publishes host port **3080** by default. Choose one deployment
-method; do not run both against the same data directory.
+默认网页为 `http://127.0.0.1:13080/`。首次登录从本机日志找到带一次性 token 的 DSH Web 链接，把内部端口替换为宿主机端口 13080。浏览器获得登录凭据后，可使用常规 URL。运行配置、登录链接和密钥留在自己的设备上。
 
-Stop it with `docker compose down` (run in the directory that holds the
-Compose file you started). The container gets 15 s to flush sessions; data and
-workspace stay in their host folders.
+在**设置 → 模型**配置一个 DSH 原生提供商，即可给 Chief 发任务并用产品内的组队工具。如果使用 DeepSeek，可在忽略的 `.env` 中设置 `DEEPSEEK_API_KEY`。兼容 Messages 的服务可同时设置 `DEEPSEEK_BASE_URL`。其他提供商由 DSH 的模型设置管理。旧实验数据如保存了 `local-acp-*` 路由，需在迁移副本中将相关 Bot 改选原生提供商，保留原历史供比较。
 
-## Permissions
+`.env.example` 列出了端口、监听、信任域名和 DSH 版本的配置。服务默认只在回环地址发布。需要远程访问时，为自己的 HTTPS 反代设置绑定地址、浏览器使用的域名及 WebSocket 转发。工作期间，Bot 能访问容器内对其开放的文件，故只挂载本团队的资料。
 
-The container is the only sandbox. DSH's own kernel sandbox (bubblewrap /
-Landlock) does not run inside Docker's default seccomp profile or on most NAS
-kernels, so the image offers exactly one permission preset, **Full access**:
-every Bot command runs without asking. Only mount folders the Bots may change
-into `/workspace`, and run the container with `PUID`/`PGID` of the share owner
-so file ownership stays right.
+## 持久化与升级
 
-## Network
-
-On dsh 0.2.2, the entrypoint passes one concrete address to `--host`.
-The default `DSH_HOST=0.0.0.0` selects the container's own address. Inside a
-container the publish rule is the real boundary, and the trust fence below
-still applies. The UI checks the `Host` header of every `/api` request:
-loopback is always trusted, and every other name or IP you open it at must be
-listed in `DSH_TRUSTED_HOST` (no port — a bare entry trusts it on any port),
-or the API answers 403. `DSH_HOST=127.0.0.1` narrows the bind to loopback
-(e.g. a reverse proxy in the same network namespace); published ports then no
-longer reach it.
-
-Alternatives:
-
-- **Host network**: set `network_mode: host` in `compose.yml` and drop `ports:`.
-  The server then binds the NAS's interfaces directly on `DSH_LISTEN_PORT`
-  (default 3080); `DSH_HOST=127.0.0.1` narrows it to loopback again.
-- **Reverse proxy / HTTPS**: the proxy must preserve the browser-visible
-  `Host` header and forward WebSocket upgrades; add the public host name to
-  `DSH_TRUSTED_HOST`. The printed login URL is the container's — replace its
-  host with the public one when logging in the first time.
-
-**HTTPS is recommended, not required.** The UI works over plain
-`http://<LAN IP>` on this dsh release, but the page is not a secure context
-there: API keys and secret values you type cross the LAN in clear text. Put a
-reverse proxy in front for regular use.
-
-## Environment variables
-
-In the root `docker-compose.yml`, edit container variables under `environment`,
-the published port under `ports`, and host directories under `volumes`.
-The alternative `docker/compose.yml` reads these settings from `.env`;
-see `docker/.env.example` for its full list. The main variables are:
-
-| Variable | Purpose |
-|---|---|
-| `DEEPSEEK_API_KEY` | API key for the model endpoint |
-| `DEEPSEEK_BASE_URL` | Override the endpoint (Anthropic-Messages-compatible) |
-| `DSH_TRUSTED_HOST` | Comma-separated host names / IPs the UI answers to |
-| `DSH_PORT` | Alternative `.env` deployment's host port (default 3080); edit `ports` directly in the root Compose file |
-| `DSH_HOST` | Bind address: `0.0.0.0` selects the container address (default); `127.0.0.1` selects loopback; a concrete host address is useful with `network_mode: host` |
-| `DSH_LISTEN_PORT` | Listen port inside the container (default 3080); only relevant with `network_mode: host` |
-| `PUID` / `PGID` | User/group the server runs as and new files belong to |
-| `DSH_TELEMETRY_DISABLED` | `1` turns off dsh's anonymous telemetry |
-
-Extra `dsh` CLI flags can be appended to the container command.
-
-## Custom model endpoint
-
-For an OpenAI-compatible relay (or another provider DSH speaks), create
-`DATA_DIR/cordis.patch.yml` before the first start — DSH's home-level patch
-layer, applied after the profile's own — with an `llm-pi-ai` provider and an
-`agent-default-model` row, and pass the key as an env var:
-
-```yaml
-- id: llm-pi-ai
-  config:
-    providers:
-      relay:
-        apiKeyEnv: RELAY_API_KEY
-        api: openai-completions          # or openai-responses / anthropic-messages
-        baseURL: http://host.docker.internal:3425/v1
-        models:
-          - id: my-model
-            contextWindow: 131072
-            maxTokens: 8192
-# New Bots made from the Create Bot form start on DSH's default model;
-# point it at the relay too, or they start on deepseek-official without a key.
-- id: agent-default-model
-  config:
-    provider: relay
-    model: my-model
-```
-
-Add `RELAY_API_KEY` under `environment` in the root Compose file, or to `.env`
-for the alternative deployment. The alternative is Settings → Models in the
-UI, which writes the same config.
-
-## Data
-
-- `/data` (`DATA_DIR`) is `DSH_HOME`: the team and chats (`bot/`, `sessions/`),
-  profiles, settings and the login cookie key (`.credentials.yaml`).
-- `/workspace` (`WORKSPACE_DIR`) is the team workspace where the Bots work.
-
-A rebuild reuses the persisted data and workspace. Keep their container
-destinations `/data` and `/workspace` unchanged when you rebuild or move the
-host directories; the team records those destinations, not the host paths.
-
-**Backup**: stop the container, then copy both `DATA_DIR` and `WORKSPACE_DIR`.
-Restore by putting both folders back and starting again.
-
-On every start, entries in `/data` with a different owner or group are assigned
-to `PUID`/`PGID`, including existing profiles and restored files. This scans the
-data directory, so large histories can take longer to start. It does not follow
-symbolic links or descend into other filesystems. A populated `/workspace` keeps
-its ownership; if you change `PUID`/`PGID`, grant the new user access to that
-share on the host.
-
-## Updating
+Compose 项目独立拥有两个命名卷。`data` 保存 DSH 配置、团队、会话和登录状态，`workspace` 保存 Bot 的工作文件。更改项目名会使用另一组卷。正式工作、源码开发以及各实验组应使用不同的 Compose 项目。
 
 ```sh
-docker compose build   # or: docker build -f docker/Dockerfile -t ds-bot:local .
-docker compose up -d
+git pull --ff-only
+docker compose -p ds-bot-research up -d --build
 ```
 
-A rebuild changes the image and the DSH it contains. An existing persisted
-profile is reused, and the entrypoint does not manage plugin upgrades.
-The packed plugin stays at `/opt/ds-bot/ds-bot.tgz` for later dependency
-installs. `/tmp/ds-bot.tgz` links to it for profiles created by older images.
-A manual dependency install can therefore pick up the plugin bundled in the
-current image; restarting alone does not update the persisted profile.
-The image is built and tested with dsh `0.2.2-rc.1`, the version
-DS Bot is verified with. The entrypoint translates the default wildcard setting
-to the concrete container address this release requires. A `DSH_VERSION` build
-arg exists, but other releases are untested.
+启动入口将 profile 中的 DS Bot 指向当前镜像里已安装的插件。重新构建后，旧卷中的团队、会话和模型配置继续读取，代码随镜像更新。停止可用 `docker compose -p ds-bot-research down`，默认会保留两个卷。升级前若需要可回退的备份，先停止服务，再分别导出两个命名卷。
 
-## Prebuilt image
-
-GitHub Actions publishes the image to GHCR after the branch CI succeeds:
-`main` as `latest`, `dev` as `dev`, and every successful push also as
-`sha-<full commit SHA>`. Only the tested linux/amd64 image is published. The
-first publication happens only after this workflow is merged and a push
-succeeds. The maintainer must set the GHCR package visibility to Public once
-before anonymous pulls work.
-
-Save this as `compose.yml` in the directory you want to deploy from. Fill in
-the API key and your NAS host names before starting it. Running these commands
-from the repository root would use the local root Compose file instead.
+若从上游旧 Compose 迁移，先停止旧服务并备份 `docker/data` 与 `docker/workspace`。这些旧目录不会被自动复制进新命名卷。需要沿用目录时，在本地未跟踪的 `docker-compose.override.yml` 中将它们显式挂到原容器路径。使用前核对路径和同一数据只有一个服务在使用。
 
 ```yaml
 services:
   ds-bot:
-    image: ghcr.io/fei2411/ds-bot:dev
-    ports:
-      - "13080:3080"
-    environment:
-      DEEPSEEK_API_KEY: ""
-      PUID: "1000"
-      PGID: "1000"
-      DSH_TRUSTED_HOST: "localhost,127.0.0.1"
     volumes:
-      - ./data:/data
-      - ./workspace:/workspace
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    restart: unless-stopped
-    stop_grace_period: 15s
+      - ./docker/data:/data
+      - ./docker/workspace:/workspace
 ```
+
+## 开发与验证
+
+[源码开发与热重载](README.dev.md) 使用不同端口与数据卷。单测、前端构件核对与 lint 使用同一套容器命令。
 
 ```sh
-docker compose pull
-docker compose up -d
+docker compose -p ds-bot-check run --build --rm -T checks
 ```
 
-The root `docker-compose.yml` and `docker/compose.yml` still build the local
-image. Choose one setup; do not run both against the same data directory. An
-existing persisted profile is not upgraded automatically.
+下面的冒烟测试使用正式镜像、断网容器和模拟模型，从 DSH Web 接口实际运行组队、会话和任务工具。它验证原生路线和宿主无依赖的环境。模型的真实工作行为另外用 [研究文档](../RESEARCH.md) 的协议复验。
 
-## Limits
-
-- No Bot browser / `read_browser` tool: those exist in dsh Desktop and the
-  desktop app only.
-- Over plain http, API keys and secret values you type cross the network in
-  clear text — use HTTPS off-box (see [Network](#network)).
-- Full access is the only permission mode: a Bot can change everything the
-  container can see.
-
-## Testing
-
-After building the image, run `node docker/test.mjs ds-bot:local` from the
-repository root. The test uses isolated, network-disabled containers and
-temporary Docker volumes, with no host directory mounts or model calls. It
-checks entrypoint permissions, first start, UID/GID changes, restored files,
-workspace ownership and the authenticated DS Bot API. It also checks that the
-runtime user can read and repack the profile's plugin archive offline, and
-that legacy archive references work without rewriting the persisted profile.
-All test containers and volumes are removed when it finishes.
-CI builds the image from the Linux checkout and runs this test as part of the
-required Test result check.
+```sh
+docker compose -p ds-bot-research build ds-bot
+docker run --rm --network none \
+  --mount "type=bind,src=$PWD,dst=/repo,readonly" \
+  --entrypoint sh ds-bot-research:local /repo/docker/smoke-native.sh
+```

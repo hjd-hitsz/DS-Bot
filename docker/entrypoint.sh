@@ -15,8 +15,7 @@ if [ ! -d /data/profiles/web ]; then
   cp -a /opt/dsh-template/. /data/
 fi
 
-# A development container links the plugin to its source mount. Restore the
-# release dependency tree before that mount disappears, keeping the profile data.
+# Restore the release manifest if this volume previously used the development image.
 PROFILE=/data/profiles/web
 if [ -f "$PROFILE/package.json.release" ]; then
   cp "$PROFILE/package.json.release" "$PROFILE/package.json"
@@ -25,14 +24,20 @@ if [ -f "$PROFILE/package.json.release" ]; then
   else
     rm -f "$PROFILE/pnpm-lock.yaml"
   fi
-  rm -rf "$PROFILE/node_modules/ds-bot"
-  if [ -d "$PROFILE/ds-bot.release" ]; then
-    mv "$PROFILE/ds-bot.release" "$PROFILE/node_modules/ds-bot"
-  else
-    cp -a /opt/dsh-template/profiles/web/node_modules/ds-bot "$PROFILE/node_modules/ds-bot"
-  fi
   rm -f "$PROFILE/package.json.release" "$PROFILE/pnpm-lock.yaml.release"
 fi
+
+# The bundled plugin and its dependencies come from the same image, so updating
+# the image changes the code even when the profile and Bot data are reused.
+BUNDLED_PLUGIN=/opt/dsh-template/profiles/web/node_modules/ds-bot
+INSTALLED_PLUGIN=$PROFILE/node_modules/ds-bot
+test -r "$BUNDLED_PLUGIN/package.json"
+if [ "$(readlink "$INSTALLED_PLUGIN" || true)" != "$BUNDLED_PLUGIN" ]; then
+  mkdir -p "$PROFILE/node_modules"
+  rm -rf -- "$INSTALLED_PLUGIN"
+  ln -s "$BUNDLED_PLUGIN" "$INSTALLED_PLUGIN"
+fi
+rm -rf -- "$PROFILE/ds-bot.release"
 
 # Existing profiles and restored backups can belong to a previous PUID/PGID.
 # Do not follow links into workspace shares or descend into other filesystems.
@@ -75,5 +80,8 @@ if [ -n "${DSH_TRUSTED_HOST:-}" ]; then
   IFS=$old_ifs
 fi
 export HOME=/home/node
+# DSH uses its public endpoint when the optional override is absent.
+[ -n "${DEEPSEEK_BASE_URL:-}" ] || unset DEEPSEEK_BASE_URL
+[ -n "${DEEPSEEK_API_KEY:-}" ] || unset DEEPSEEK_API_KEY
 cd /workspace
 exec gosu node "$@"

@@ -42,7 +42,7 @@ COPY --from=build /opt/ds-bot/ds-bot.tgz /opt/ds-bot/ds-bot.tgz
 # Persisted profiles from earlier images still refer to the old archive path.
 RUN ln -s /opt/ds-bot/ds-bot.tgz /tmp/ds-bot.tgz
 COPY --chmod=0755 docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-COPY docker/docker.patch.yml /opt/ds-bot/docker.patch.yml
+COPY --chmod=0644 docker/docker.patch.yml /opt/ds-bot/docker.patch.yml
 
 ENV DSH_HOME=/data \
     DSH_PERMISSION_MODE=danger-full-access
@@ -53,5 +53,5 @@ ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 
 LABEL org.opencontainers.image.title="DS Bot" \
       org.opencontainers.image.description="A team of long-lived Bots on DeepSeek Harness, served by dsh web" \
-      org.opencontainers.image.source="https://github.com/Fei2411/DS-Bot" \
+      org.opencontainers.image.source="https://github.com/hjd-hitsz/DS-Bot" \
       org.opencontainers.image.licenses="Apache-2.0"
